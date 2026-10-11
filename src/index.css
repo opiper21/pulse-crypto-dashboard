@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@theme {
+  --animate-drift: drift 10s ease-in-out infinite;
+}
+
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(90px, 70px) scale(1.25); }
+}
