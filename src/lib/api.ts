@@ -12,7 +12,7 @@ export interface PricePoint {
   value: number
 }
 
-const COIN_IDS = ['bitcoin', 'ethereum', 'solana', 'ripple', 'dogecoin']
+const COIN_IDS = ['bitcoin', 'ethereum', 'solana', 'ripple', 'dogecoin', 'binancecoin']
 const HISTORY_MAX_AGE = 30 * 60_000 // reuse saved chart data for 30 minutes
 
 interface CacheEntry<T> {
