@@ -3,7 +3,9 @@ import type { FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { Coin } from '../lib/api'
 import type { Holding } from '../lib/useHoldings'
+import { COIN_COLORS, FALLBACK_COLOR } from '../lib/colors'
 import AnimatedNumber from './AnimatedNumber'
+import AllocationDonut from './AllocationDonut'
 
 interface HoldingsPanelProps {
   coins: Coin[]
@@ -43,10 +45,15 @@ export default function HoldingsPanel({ coins, holdings, onAdd, onRemove }: Hold
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-5 backdrop-blur-xl">
-      <p className="text-sm text-white/60">My holdings</p>
-      <p className="mb-5 text-4xl font-bold text-[#2FE6A6]">
-        <AnimatedNumber value={total} />
-      </p>
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm text-white/60">My holdings</p>
+          <p className="text-4xl font-bold text-[#2FE6A6]">
+            <AnimatedNumber value={total} />
+          </p>
+        </div>
+        <AllocationDonut slices={rows.map((r) => ({ id: r.coin.id, value: r.value }))} />
+      </div>
 
       <form onSubmit={handleSubmit} className="mb-5 grid grid-cols-2 gap-2">
         <select
@@ -98,8 +105,13 @@ export default function HoldingsPanel({ coins, holdings, onAdd, onRemove }: Hold
                 <img src={coin.image} alt={coin.name} className="h-6 w-6" />
                 <div>
                   <p className="text-sm font-medium">{coin.name}</p>
-                  <p className="text-xs text-white/50">
-                    {holding.amount} {coin.symbol.toUpperCase()}
+                  <p className="flex items-center gap-1.5 text-xs text-white/50">
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: COIN_COLORS[coin.id] ?? FALLBACK_COLOR }}
+                    />
+                    {holding.amount} {coin.symbol.toUpperCase()} ·{' '}
+                    {total > 0 ? Math.round((value / total) * 100) : 0}%
                   </p>
                 </div>
               </div>
