@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { COIN_COLORS, FALLBACK_COLOR } from '../lib/colors'
+import { coinColor } from '../lib/colors'
 
 interface Slice {
   id: string
@@ -56,7 +56,7 @@ export default function AllocationDonut({ slices, size = 96 }: AllocationDonutPr
               cy="50"
               r={RADIUS}
               fill="none"
-              stroke={COIN_COLORS[arc.id] ?? FALLBACK_COLOR}
+              stroke={coinColor(arc.id)}
               strokeWidth="12"
               initial={{ strokeDasharray: `0 ${CIRCUMFERENCE}`, strokeDashoffset: arc.offset }}
               animate={{

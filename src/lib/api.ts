@@ -12,7 +12,23 @@ export interface PricePoint {
   value: number
 }
 
-const COIN_IDS = ['bitcoin', 'ethereum', 'solana', 'ripple', 'dogecoin', 'binancecoin']
+export interface SearchCoin {
+  id: string
+  name: string
+  symbol: string
+  thumb: string
+  market_cap_rank: number | null
+}
+
+export const DEFAULT_COIN_IDS = [
+  'bitcoin',
+  'ethereum',
+  'solana',
+  'ripple',
+  'dogecoin',
+  'binancecoin',
+]
+
 const HISTORY_MAX_AGE = 30 * 60_000 // reuse saved chart data for 30 minutes
 
 interface CacheEntry<T> {
@@ -37,19 +53,28 @@ function writeCache<T>(key: string, data: T) {
   }
 }
 
-export async function fetchCoins(): Promise<Coin[]> {
-  const cached = readCache<Coin[]>('pulse:coins')
+export async function fetchCoins(ids: string[]): Promise<Coin[]> {
+  const cacheKey = `pulse:coins:${ids.join(',')}`
+  const cached = readCache<Coin[]>(cacheKey)
   try {
-    const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${COIN_IDS.join(',')}&price_change_percentage=24h`
+    const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(',')}&price_change_percentage=24h`
     const res = await fetch(url)
     if (!res.ok) throw new Error(`Request failed: ${res.status}`)
     const data: Coin[] = await res.json()
-    writeCache('pulse:coins', data)
+    writeCache(cacheKey, data)
     return data
   } catch (err) {
     if (cached) return cached.data // show the last known prices instead of an error
     throw err
   }
+}
+
+export async function searchCoins(query: string): Promise<SearchCoin[]> {
+  const url = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query)}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+  const json: { coins: SearchCoin[] } = await res.json()
+  return json.coins.slice(0, 6)
 }
 
 export async function fetchHistory(id: string): Promise<PricePoint[]> {

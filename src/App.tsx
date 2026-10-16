@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchCoins, fetchHistory } from './lib/api'
 import { useHoldings } from './lib/useHoldings'
+import { useWatchlist } from './lib/useWatchlist'
 import CoinCard from './components/CoinCard'
+import CoinSearch from './components/CoinSearch'
 import PriceChart from './components/PriceChart'
 import HoldingsPanel from './components/HoldingsPanel'
 
@@ -15,24 +17,39 @@ export default function App() {
   const rootRef = useRef<HTMLDivElement>(null)
   const [selectedId, setSelectedId] = useState('bitcoin')
   const { holdings, addHolding, removeHolding } = useHoldings()
+  const { ids, extraIds, atLimit, addCoin, removeCoin } = useWatchlist()
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['coins'],
-    queryFn: fetchCoins,
+    queryKey: ['coins', ids],
+    queryFn: () => fetchCoins(ids),
     refetchInterval: 30_000,
     refetchOnWindowFocus: false,
     retry: false,
+    placeholderData: keepPreviousData,
   })
 
+  // until a newly added coin's price arrives, keep showing the current one
+  const selectedCoin = data?.find((c) => c.id === selectedId) ?? data?.[0]
+  const activeId = selectedCoin?.id
+
   const history = useQuery({
-    queryKey: ['history', selectedId],
-    queryFn: () => fetchHistory(selectedId),
+    queryKey: ['history', activeId],
+    queryFn: () => fetchHistory(activeId as string),
+    enabled: Boolean(activeId),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
     retry: false,
   })
 
-  const selectedCoin = data?.find((c) => c.id === selectedId)
+  function handlePick(id: string) {
+    addCoin(id)
+    setSelectedId(id)
+  }
+
+  function handleRemove(id: string) {
+    removeCoin(id)
+    if (selectedId === id) setSelectedId('bitcoin')
+  }
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
     const el = rootRef.current
@@ -77,7 +94,10 @@ export default function App() {
       />
 
       <div className="relative z-10 p-8">
-        <h1 className="mb-6 text-3xl font-bold text-[#2FE6A6]">Pulse</h1>
+        <div className="relative z-20 mb-6 flex items-center justify-between gap-4">
+          <h1 className="text-3xl font-bold text-[#2FE6A6]">Pulse</h1>
+          <CoinSearch existingIds={ids} atLimit={atLimit} onPick={handlePick} />
+        </div>
 
         {isLoading && <p className="text-white/60">Loading prices…</p>}
         {isError && !data && <p className="text-red-400">Couldn't load prices.</p>}
@@ -85,7 +105,7 @@ export default function App() {
         {data && selectedCoin && (
           <div className="mb-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
             <motion.div
-              key={selectedId}
+              key={selectedCoin.id}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
@@ -125,8 +145,9 @@ export default function App() {
               key={coin.id}
               coin={coin}
               index={i}
-              selected={coin.id === selectedId}
+              selected={coin.id === selectedCoin?.id}
               onSelect={setSelectedId}
+              onRemove={extraIds.includes(coin.id) ? handleRemove : undefined}
             />
           ))}
         </div>

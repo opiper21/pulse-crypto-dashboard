@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { Coin } from '../lib/api'
 import type { Holding } from '../lib/useHoldings'
-import { COIN_COLORS, FALLBACK_COLOR } from '../lib/colors'
+import { coinColor } from '../lib/colors'
 import AnimatedNumber from './AnimatedNumber'
 import AllocationDonut from './AllocationDonut'
 
@@ -161,7 +161,7 @@ export default function HoldingsPanel({ coins, holdings, onAdd, onRemove }: Hold
                     <p className="flex items-center gap-1.5 text-xs text-white/50">
                       <span
                         className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: COIN_COLORS[coin.id] ?? FALLBACK_COLOR }}
+                        style={{ backgroundColor: coinColor(coin.id) }}
                       />
                       {holding.amount} {coin.symbol.toUpperCase()} ·{' '}
                       {total > 0 ? Math.round((value / total) * 100) : 0}%
