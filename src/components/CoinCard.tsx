@@ -27,6 +27,7 @@ export default function CoinCard({ coin, index, selected, onSelect, onRemove }: 
   return (
     <motion.div
       onClick={() => onSelect(coin.id)}
+      layout
       initial={{ opacity: 0, y: 24 }}
       animate={{
         opacity: 1,

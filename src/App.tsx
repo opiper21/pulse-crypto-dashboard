@@ -1,14 +1,23 @@
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchCoins, fetchHistory } from './lib/api'
 import { useHoldings } from './lib/useHoldings'
 import { useWatchlist } from './lib/useWatchlist'
+import { useAlerts } from './lib/useAlerts'
+import { formatUsd } from './lib/format'
 import CoinCard from './components/CoinCard'
 import CoinSearch from './components/CoinSearch'
 import PriceChart from './components/PriceChart'
 import HoldingsPanel from './components/HoldingsPanel'
+import AlertsPanel from './components/AlertsPanel'
+import AlertToasts from './components/AlertToasts'
+import type { Toast } from './components/AlertToasts'
+import CardControls from './components/CardControls'
+import type { FilterKey, SortKey } from './components/CardControls'
+import UpdateStatus from './components/UpdateStatus'
+import SimulateControls from './components/SimulateControls'
 
 const DOT_SIZE = '28px 28px'
 const SPOTLIGHT_MASK = 'radial-gradient(300px circle at var(--x) var(--y), black, transparent)'
@@ -16,10 +25,15 @@ const SPOTLIGHT_MASK = 'radial-gradient(300px circle at var(--x) var(--y), black
 export default function App() {
   const rootRef = useRef<HTMLDivElement>(null)
   const [selectedId, setSelectedId] = useState('bitcoin')
+  const [toasts, setToasts] = useState<Toast[]>([])
+  const [sortBy, setSortBy] = useState<SortKey>('default')
+  const [filter, setFilter] = useState<FilterKey>('all')
+  const [simFactor, setSimFactor] = useState(1) // 1 = real prices, resets on refresh
   const { holdings, addHolding, removeHolding } = useHoldings()
   const { ids, extraIds, atLimit, addCoin, removeCoin } = useWatchlist()
+  const { alerts, addAlert, removeAlert, markTriggered } = useAlerts()
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['coins', ids],
     queryFn: () => fetchCoins(ids),
     refetchInterval: 30_000,
@@ -28,8 +42,15 @@ export default function App() {
     placeholderData: keepPreviousData,
   })
 
+  // everything on screen uses these prices, which are the real ones unless a simulation is on
+  const displayData = useMemo(
+    () => data?.map((c) => ({ ...c, current_price: c.current_price * simFactor })),
+    [data, simFactor],
+  )
+  const simulated = Math.abs(simFactor - 1) > 1e-9
+
   // until a newly added coin's price arrives, keep showing the current one
-  const selectedCoin = data?.find((c) => c.id === selectedId) ?? data?.[0]
+  const selectedCoin = displayData?.find((c) => c.id === selectedId) ?? displayData?.[0]
   const activeId = selectedCoin?.id
 
   const history = useQuery({
@@ -40,6 +61,53 @@ export default function App() {
     refetchOnWindowFocus: false,
     retry: false,
   })
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }, [])
+
+  // every time prices change, check whether any alert has been crossed
+  useEffect(() => {
+    if (!displayData) return
+
+    const fired = alerts.filter((a) => {
+      if (a.triggeredAt !== undefined) return false
+      const coin = displayData.find((c) => c.id === a.coinId)
+      if (!coin) return false
+      return a.direction === 'above'
+        ? coin.current_price >= a.target
+        : coin.current_price <= a.target
+    })
+
+    if (fired.length === 0) return
+
+    markTriggered(fired.map((a) => a.id))
+    setToasts((prev) => [
+      ...prev,
+      ...fired.map((a) => {
+        const coin = displayData.find((c) => c.id === a.coinId)
+        return {
+          id: `${a.id}-toast`,
+          message: `${coin?.name ?? a.coinId} went ${a.direction} ${formatUsd(a.target)}. Now ${formatUsd(coin?.current_price ?? a.target)}.`,
+        }
+      }),
+    ])
+  }, [displayData, alerts, markTriggered])
+
+  // apply the filter first, then the sort (filter makes a new list, so sorting it is safe)
+  const visibleCoins = (displayData ?? [])
+    .filter((c) => {
+      if (filter === 'gainers') return c.price_change_percentage_24h >= 0
+      if (filter === 'losers') return c.price_change_percentage_24h < 0
+      return true
+    })
+    .sort((a, b) => {
+      if (sortBy === 'price') return b.current_price - a.current_price
+      if (sortBy === 'change')
+        return b.price_change_percentage_24h - a.price_change_percentage_24h
+      if (sortBy === 'name') return a.name.localeCompare(b.name)
+      return 0
+    })
 
   function handlePick(id: string) {
     addCoin(id)
@@ -65,6 +133,8 @@ export default function App() {
       style={{ '--x': '50%', '--y': '30%' } as CSSProperties}
       className="relative min-h-screen overflow-hidden bg-[#070B14] text-[#EAF2EE]"
     >
+      <AlertToasts toasts={toasts} onDismiss={dismissToast} />
+
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.14),transparent_60%)]" />
 
       <div
@@ -94,15 +164,26 @@ export default function App() {
       />
 
       <div className="relative z-10 p-8">
-        <div className="relative z-20 mb-6 flex items-center justify-between gap-4">
-          <h1 className="text-3xl font-bold text-[#2FE6A6]">Pulse</h1>
+        <div className="relative z-20 mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-[#2FE6A6]">Pulse</h1>
+            <div className="mt-1">
+              <UpdateStatus
+                updatedAt={dataUpdatedAt}
+                fetching={isFetching}
+                failed={isError}
+                simulated={simulated}
+                onRefresh={() => refetch()}
+              />
+            </div>
+          </div>
           <CoinSearch existingIds={ids} atLimit={atLimit} onPick={handlePick} />
         </div>
 
         {isLoading && <p className="text-white/60">Loading prices…</p>}
         {isError && !data && <p className="text-red-400">Couldn't load prices.</p>}
 
-        {data && selectedCoin && (
+        {displayData && selectedCoin && (
           <div className="mb-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
             <motion.div
               key={selectedCoin.id}
@@ -131,7 +212,7 @@ export default function App() {
             </motion.div>
 
             <HoldingsPanel
-              coins={data}
+              coins={displayData}
               holdings={holdings}
               onAdd={addHolding}
               onRemove={removeHolding}
@@ -139,8 +220,37 @@ export default function App() {
           </div>
         )}
 
+        {displayData && (
+          <div className="mb-6">
+            <AlertsPanel
+              coins={displayData}
+              alerts={alerts}
+              onAdd={addAlert}
+              onRemove={removeAlert}
+            />
+            <SimulateControls
+              factor={simFactor}
+              onNudge={(percent) => setSimFactor((f) => f * (1 + percent / 100))}
+              onReset={() => setSimFactor(1)}
+            />
+          </div>
+        )}
+
+        {displayData && (
+          <CardControls
+            sortBy={sortBy}
+            filter={filter}
+            onSort={setSortBy}
+            onFilter={setFilter}
+          />
+        )}
+
+        {displayData && visibleCoins.length === 0 && (
+          <p className="mb-4 text-sm text-white/50">No coins match this filter right now.</p>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {data?.map((coin, i) => (
+          {visibleCoins.map((coin, i) => (
             <CoinCard
               key={coin.id}
               coin={coin}
